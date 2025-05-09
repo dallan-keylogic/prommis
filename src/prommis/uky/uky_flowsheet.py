@@ -211,7 +211,7 @@ from prommis.uky.costing.ree_plant_capcost import QGESSCosting, QGESSCostingData
 _log = idaeslog.getLogger(__name__)
 
 # Epsilon represents near-zero component concentrations
-eps = 1e-8 * units.mg / units.L
+eps = 1e-3 * units.mg / units.L
 
 
 def main():
@@ -1088,23 +1088,23 @@ def initialize_system(m):
     print("Initialization Order")
     for o in order:
         print(o[0].name)
-
+    eps2 = 1e-3
     tear_guesses1 = {
         "flow_vol": {0: 747.99},
         "conc_mass_comp": {
             (0, "Al"): 180.84,
             (0, "Ca"): 28.93,
             (0, "Ce"): 5.48,
-            (0, "Dy"): 4.46e-11,
+            (0, "Dy"): eps2,
             (0, "Fe"): 269.98,
-            (0, "Gd"): 2.60e-7,
+            (0, "Gd"): eps2,
             (0, "H"): 20.06,
             (0, "H2O"): 1000000,
             (0, "HSO4"): 963.06,
-            (0, "Cl"): 1e-8,
+            (0, "Cl"): eps2,
             (0, "La"): 0.0037,
-            (0, "Nd"): 1.81e-7,
-            (0, "Pr"): 3.65e-6,
+            (0, "Nd"): eps2,
+            (0, "Pr"): eps2,
             (0, "SO4"): 486.24,
             (0, "Sc"): 4.17e-11,
             (0, "Sm"): 6.30e-10,
@@ -1114,18 +1114,18 @@ def initialize_system(m):
     tear_guesses2 = {
         "flow_vol": {0: 62.01},
         "conc_mass_comp": {
-            (0, "Al_o"): 1e-9,
-            (0, "Ca_o"): 1e-9,
-            (0, "Ce_o"): 1e-4,
-            (0, "Dy_o"): 1e-7,
-            (0, "Fe_o"): 1e-7,
-            (0, "Gd_o"): 1e-6,
-            (0, "La_o"): 1e-5,
-            (0, "Nd_o"): 1e-4,
-            (0, "Pr_o"): 1e-6,
+            (0, "Al_o"): eps2,
+            (0, "Ca_o"): eps2,
+            (0, "Ce_o"): eps2,
+            (0, "Dy_o"): eps2,
+            (0, "Fe_o"): eps2,
+            (0, "Gd_o"): eps2,
+            (0, "La_o"): eps2,
+            (0, "Nd_o"): eps2,
+            (0, "Pr_o"): eps2,
             (0, "Sc_o"): 250,
-            (0, "Sm_o"): 1e-6,
-            (0, "Y_o"): 1e-6,
+            (0, "Sm_o"): eps2,
+            (0, "Y_o"): eps2,
             (0, "DEHPA"): 9.758e5,
             (0, "Kerosene"): 8.20e5,
         },
@@ -1155,18 +1155,18 @@ def initialize_system(m):
     tear_guesses4 = {
         "flow_vol": {0: 64},
         "conc_mass_comp": {
-            (0, "Al_o"): 1e-9,
-            (0, "Ca_o"): 1e-9,
-            (0, "Ce_o"): 1e-5,
-            (0, "Dy_o"): 1e-7,
-            (0, "Fe_o"): 1e-7,
-            (0, "Gd_o"): 1e-6,
-            (0, "La_o"): 1e-5,
-            (0, "Nd_o"): 1e-5,
-            (0, "Pr_o"): 1e-6,
+            (0, "Al_o"): eps2,
+            (0, "Ca_o"): eps2,
+            (0, "Ce_o"): eps2,
+            (0, "Dy_o"): eps2,
+            (0, "Fe_o"): eps2,
+            (0, "Gd_o"): eps2,
+            (0, "La_o"): eps2,
+            (0, "Nd_o"): eps2,
+            (0, "Pr_o"): eps2,
             (0, "Sc_o"): 321.34,
-            (0, "Sm_o"): 1e-6,
-            (0, "Y_o"): 1e-6,
+            (0, "Sm_o"): eps2,
+            (0, "Y_o"): eps2,
             (0, "DEHPA"): 9.758e5,
             (0, "Kerosene"): 8.20e5,
         },
@@ -1182,12 +1182,12 @@ def initialize_system(m):
             (0, "Gd"): 22,
             (0, "H"): 14,
             (0, "H2O"): 1000000,
-            (0, "HSO4"): 1e-7,
+            (0, "HSO4"): eps2,
             (0, "Cl"): 1400,
             (0, "La"): 160,
             (0, "Nd"): 121,
             (0, "Pr"): 30,
-            (0, "SO4"): 1e-7,
+            (0, "SO4"): eps2,
             (0, "Sc"): 149.2,
             (0, "Sm"): 13,
             (0, "Y"): 18,
@@ -1241,7 +1241,16 @@ def initialize_system(m):
         m.fs.leach,
     ]
 
-    initializer_sx = SolventExtractionInitializer()
+    initializer_sx = SolventExtractionInitializer(
+        output_level=idaeslog.DEBUG,
+        # solver="ipopt",
+        # writer_config={
+        #     "linear_presolve": False
+        # },
+        # ssc_solver_options={
+        #     "tee": True
+        # }
+    )
     sx_units = [
         m.fs.solex_rougher_load,
         # m.fs.solex_rougher_scrub,
@@ -1272,41 +1281,13 @@ def initialize_system(m):
             _log.info(f"Initializing {unit}")
             initializer_sx.initialize(unit)
         elif unit == m.fs.solex_rougher_scrub:
-            try:
-                _log.info(f"Initializing {unit}")
-                initializer_sx.initialize(unit)
-            except:
-                # Fix feed states
-                m.fs.solex_rougher_scrub.mscontactor.aqueous_inlet_state[:].flow_vol.fix()
-                m.fs.solex_rougher_scrub.mscontactor.aqueous_inlet_state[:].conc_mass_comp.fix()
-                m.fs.solex_rougher_scrub.mscontactor.organic_inlet_state[:].flow_vol.fix()
-                m.fs.solex_rougher_scrub.mscontactor.organic_inlet_state[:].conc_mass_comp.fix()
-                # Re-solve leach unit
-                solver = SolverFactory("ipopt")
-                solver.solve(m.fs.solex_rougher_scrub, tee=True)
-                # Unfix feed states
-                m.fs.solex_rougher_scrub.mscontactor.aqueous_inlet_state[:].flow_vol.unfix()
-                m.fs.solex_rougher_scrub.mscontactor.aqueous_inlet_state[:].conc_mass_comp.unfix()
-                m.fs.solex_rougher_scrub.mscontactor.organic_inlet_state[:].flow_vol.unfix()
-                m.fs.solex_rougher_scrub.mscontactor.organic_inlet_state[:].conc_mass_comp.unfix()
+            _log.info(f"Initializing {unit}")
+            initializer_sx.initialize(unit)
+            import pdb; pdb.set_trace()
+
         elif unit == m.fs.solex_rougher_strip:
-            try:
-                _log.info(f"Initializing {unit}")
-                initializer_sx.initialize(unit)
-            except:
-                # Fix feed states
-                m.fs.solex_rougher_strip.mscontactor.aqueous_inlet_state[:].flow_vol.fix()
-                m.fs.solex_rougher_strip.mscontactor.aqueous_inlet_state[:].conc_mass_comp.fix()
-                m.fs.solex_rougher_strip.mscontactor.organic_inlet_state[:].flow_vol.fix()
-                m.fs.solex_rougher_strip.mscontactor.organic_inlet_state[:].conc_mass_comp.fix()
-                # Re-solve leach unit
-                solver = SolverFactory("ipopt")
-                solver.solve(m.fs.solex_rougher_strip, tee=True)
-                # Unfix feed states
-                m.fs.solex_rougher_strip.mscontactor.aqueous_inlet_state[:].flow_vol.unfix()
-                m.fs.solex_rougher_strip.mscontactor.aqueous_inlet_state[:].conc_mass_comp.unfix()
-                m.fs.solex_rougher_strip.mscontactor.organic_inlet_state[:].flow_vol.unfix()
-                m.fs.solex_rougher_strip.mscontactor.organic_inlet_state[:].conc_mass_comp.unfix()
+            _log.info(f"Initializing {unit}")
+            initializer_sx.initialize(unit)
 
         else:
             _log.info(f"Initializing {unit}")

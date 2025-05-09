@@ -78,8 +78,10 @@ pressure of the phases.
 """
 
 from pyomo.common.config import Bool, ConfigDict, ConfigValue, In
-from pyomo.environ import Constraint, Param, Block, units
+from pyomo.environ import Block,Constraint, Param, Reference, Suffix, units, Var
+from pyomo.opt.results.solver import check_optimal_termination
 from pyomo.network import Port
+from pyomo.dae.flatten import slice_component_along_sets, flatten_dae_components
 
 from idaes.core import (
     FlowDirection,
@@ -89,7 +91,8 @@ from idaes.core import (
 )
 from idaes.core.util.config import is_physical_parameter_block
 from idaes.core.util.constants import Constants
-from idaes.core.initialization import ModularInitializerBase
+from idaes.core.initialization import ModularInitializerBase, BlockTriangularizationInitializer
+from idaes.core.util.model_statistics import degrees_of_freedom
 
 from idaes.models.unit_models.mscontactor import MSContactor
 
@@ -148,8 +151,40 @@ class SolventExtractionInitializer(ModularInitializerBase):
 
         model.mscontactor.heterogeneous_reaction_extent.unfix()
 
+        other_vars, element_vars = flatten_dae_components(model, model.mscontactor.elements, ctype=Var)
+        other_cons, element_cons = flatten_dae_components(model, model.mscontactor.elements, ctype=Constraint)
+
         solver = self._get_solver()
-        init_model = solver.solve(model)
+        # import pdb; pdb.set_trace()
+        for e in model.mscontactor.elements:
+            self.restore_model_state(model)
+            self.fix_initialization_states(model)
+
+            for var in other_vars:
+                var.fix()
+            for con in other_cons:
+                con.deactivate()
+
+            for e2 in model.mscontactor.elements:
+                if e2 != e:
+                    for var in element_vars:
+                        var[e2].fix()
+                    for con in element_cons:
+                        con[e2].deactivate()
+            assert degrees_of_freedom(model) == 0
+            print(f"Initializing element {e}")
+            # model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            # model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            results = solver.solve(model, tee=True)
+            if not check_optimal_termination(results):
+                from idaes.core.util.model_diagnostics import DiagnosticsToolbox
+                diag_tbx = DiagnosticsToolbox(model)
+                import pdb; pdb.set_trace()
+
+        self.restore_model_state(model)
+        self.fix_initialization_states(model)
+
+        init_model = solver.solve(model, tee=True)
 
         return init_model
 
@@ -207,7 +242,7 @@ Stream_Config.declare(
     "has_pressure_balance",
     ConfigValue(
         default=False,
-        domain=Bool,
+        domain=In([False]),
         doc="Bool indicating whether to include pressure balance for stream. Default=False.",
     ),
 )
