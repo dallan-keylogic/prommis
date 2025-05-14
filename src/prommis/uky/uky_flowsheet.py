@@ -890,7 +890,7 @@ def set_operating_conditions(m):
     m.fs.rougher_org_make_up.conc_mass_comp[0, "DEHPA"].fix(dehpa_conc)
     m.fs.rougher_org_make_up.conc_mass_comp[0, "Kerosene"].fix(kerosene_conc)
 
-    m.fs.acid_feed1.flow_vol.fix(0.09)
+    m.fs.acid_feed1.flow_vol.fix(0.20)
     m.fs.acid_feed1.properties[0.0].pressure.fix(P_atm)
     m.fs.acid_feed1.properties[0.0].temperature.fix(Temp_room)
     m.fs.acid_feed1.conc_mass_comp[0, "H2O"].fix(1000000)

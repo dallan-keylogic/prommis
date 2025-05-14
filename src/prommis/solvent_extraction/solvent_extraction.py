@@ -78,7 +78,8 @@ pressure of the phases.
 """
 
 from pyomo.common.config import Bool, ConfigDict, ConfigValue, In
-from pyomo.environ import Block,Constraint, Param, Reference, Suffix, units, Var
+from pyomo.environ import Block,Constraint, Param, Reference, Suffix, TransformationFactory, units, Var
+from pyomo.util.calc_var_value import calculate_variable_from_constraint
 from pyomo.opt.results.solver import check_optimal_termination
 from pyomo.network import Port
 from pyomo.dae.flatten import slice_component_along_sets, flatten_dae_components
@@ -149,12 +150,21 @@ class SolventExtractionInitializer(ModularInitializerBase):
         )
         msc_init.initialize(model.mscontactor)
 
+        bt_init = BlockTriangularizationInitializer(
+            block_solver_options=self.config.ssc_solver_options,
+            block_solver_call_options={
+                "tee": True
+            },
+            calculate_variable_options=self.config.calculate_variable_options
+        )
+        import pdb; pdb.set_trace()
         model.mscontactor.heterogeneous_reaction_extent.unfix()
 
         other_vars, element_vars = flatten_dae_components(model, model.mscontactor.elements, ctype=Var)
         other_cons, element_cons = flatten_dae_components(model, model.mscontactor.elements, ctype=Constraint)
 
         solver = self._get_solver()
+        # TransformationFactory("contrib.strip_var_bounds").apply_to(model, reversible=True)
         # import pdb; pdb.set_trace()
         for e in model.mscontactor.elements:
             self.restore_model_state(model)
@@ -175,6 +185,17 @@ class SolventExtractionInitializer(ModularInitializerBase):
             print(f"Initializing element {e}")
             # model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
             # model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            for idx in model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient:
+                calculate_variable_from_constraint(
+                    model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient[idx],
+                    model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint[idx],
+                    # **self.config.calculate_variable_options
+                )
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.deactivate()
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.fix()
+            bt_init.initialize(model)
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.activate()
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.unfix()
             results = solver.solve(model, tee=True)
             if not check_optimal_termination(results):
                 from idaes.core.util.model_diagnostics import DiagnosticsToolbox
@@ -185,6 +206,7 @@ class SolventExtractionInitializer(ModularInitializerBase):
         self.fix_initialization_states(model)
 
         init_model = solver.solve(model, tee=True)
+        # TransformationFactory("contrib.strip_var_bounds").revert(model)
 
         return init_model
 
