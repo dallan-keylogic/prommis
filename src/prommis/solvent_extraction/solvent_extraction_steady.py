@@ -1,7 +1,9 @@
 from pyomo.environ import (
     ConcreteModel,
+    TransformationFactory,
     units,
 )
+from pyomo.common.collections import ComponentMap
 
 import numpy as np
 
@@ -11,13 +13,14 @@ from idaes.core import (
 )
 
 from idaes.core.solvers import get_solver
+from idaes.models.unit_models.mscontactor import MSContactorScaler
 
-
-from prommis.leaching.leach_solution_properties import LeachSolutionParameters
+from prommis.leaching.leach_solution_properties import LeachSolutionParameters, LeachSolutionPropertiesScaler
 from prommis.solvent_extraction.ree_og_distribution import REESolExOgParameters
 from prommis.solvent_extraction.solvent_extraction import (
     SolventExtraction,
     SolventExtractionInitializer,
+    SolventExtractionScaler,
 )
 from prommis.solvent_extraction.solvent_extraction_reaction_package import (
     SolventExtractionReactions,
@@ -130,5 +133,21 @@ if __name__ == "__main__":
     initializer = SolventExtractionInitializer()
     initializer.initialize(m.fs.solex)
 
+    leach_scaler = LeachSolutionPropertiesScaler()
+    # H2SO4 is acid here, so almost no chloride
+    leach_scaler.DEFAULT_SCALING_FACTORS["conc_mass_comp[Cl]"] = 1e7
+    solex_scaler = SolventExtractionScaler()
+    submodel_scalers=ComponentMap()
+    submodel_scalers[m.fs.solex.mscontactor.aqueous_inlet_state] = leach_scaler
+
+    solex_scaler.scale_model(m.fs.solex, submodel_scalers=submodel_scalers)
+    m_scaled = TransformationFactory("core.scale_model").create_using(m, rename=False)
+
     solver = get_solver(solver="ipopt_v2")
-    solver.solve(m, tee=True)
+    solver.solve(m_scaled, tee=True)
+    TransformationFactory("core.scale_model").propagate_solution(m_scaled, m)
+    from idaes.core.util.model_diagnostics import DiagnosticsToolbox
+    diag_tbx = DiagnosticsToolbox(m_scaled)
+    diag_tbx.config.jacobian_large_value_caution = 100
+    diag_tbx.config.jacobian_small_value_caution = 0.01
+    diag_tbx.report_numerical_issues()

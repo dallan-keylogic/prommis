@@ -38,6 +38,96 @@ from idaes.core.util.misc import add_object_reference
 from idaes.core.scaling import CustomScalerBase, get_scaling_factor
 
 
+contaminant_list = ["Fe", "Al", "Ca"]
+ree_list = ["Sc", "Y", "La", "Ce", "Pr", "Nd", "Sm", "Gd", "Dy"]
+
+# -----------------------------------------------------------------------------
+# Leach solution property package scaler
+class LeachSolutionPropertiesScaler(CustomScalerBase):
+    """
+    Scaler for saponification properties package.
+
+    Flow and concentration are scaled by default value (if no user input provided),
+    pressure is scaled assuming order of magnitude of 1e5 Pa, and temperature is
+    scaled using the average of the bounds. Constraints using the inverse maximum
+    scheme.
+    """
+
+    CONFIG = CustomScalerBase.CONFIG
+    # CONFIG.declare(
+    #     "user_scaling_dict",  # TODO: Need better name
+    #     ConfigValue(
+    #         default=None,
+    #         description="Dictionary of scaling factors ",
+    #     ),
+    # )
+
+    # UNIT_SCALING_FACTORS = {
+    #     # "QuantityName: (reference units, scaling factor)
+    #     "Pressure": (units.Pa, 1e-5), # Pressure 
+    # }
+
+    DEFAULT_SCALING_FACTORS = {
+        "flow_vol": 1e-2,
+        "pressure": 1e-5,
+        "temperature": 1/300, 
+        "conc_mass_comp[H2O]": 1e-6,
+        "conc_mass_comp[H]" : 1e-1,
+        "conc_mass_comp[SO4]": 1e-2,
+        "conc_mass_comp[HSO4]": 1e-3,
+        "conc_mass_comp[Cl]": 1e-3,
+    }
+    for ree in ree_list:
+        DEFAULT_SCALING_FACTORS[f"conc_mass_comp[{ree}]"] = 10
+    for contaminant in contaminant_list:
+        DEFAULT_SCALING_FACTORS[f"conc_mass_comp[{contaminant}]"] = 1e-2
+    
+
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        # Scale state variables
+        self.scale_variable_by_default(model.flow_vol, overwrite=overwrite)
+        self.scale_variable_by_default(model.pressure, overwrite=overwrite)
+        self.scale_variable_by_default(model.temperature, overwrite=overwrite)
+        for idx, var in model.conc_mass_comp.items():
+            self.scale_variable_by_default(var, overwrite=overwrite)
+
+        # Scale other variables
+        params = model.params
+
+        self.set_variable_scaling_factor(model.pH_phase["liquid"], 10, overwrite=overwrite)
+        for idx, var in model.conc_mol_comp.items():
+            sf = get_scaling_factor(model.conc_mass_comp[idx]) * value(
+                units.convert(
+                    params.mw[idx],
+                    to_units=units.mg/units.mol
+                )
+            )
+            self.set_variable_scaling_factor(var, sf, overwrite=overwrite)
+
+
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        for idx, con in model.molar_concentration_constraint.items():
+            sf = get_scaling_factor(model.conc_mass_comp[idx])
+            self.set_constraint_scaling_factor(con, sf, overwrite=overwrite)
+        
+        sf = get_scaling_factor(model.conc_mol_comp["H"])
+        self.set_constraint_scaling_factor(model.pH_constraint["liquid"], sf, overwrite=overwrite)
+    
+        if model.is_property_constructed("h2o_concentration"):
+            sf = get_scaling_factor(model.conc_mass_comp["H2O"])
+            self.set_constraint_scaling_factor(model.h2o_concentration, sf, overwrite=overwrite)
+        
+        if model.is_property_constructed("hso4_dissociation"):
+            sf = (
+                get_scaling_factor(model.conc_mol_comp["H"])
+                * get_scaling_factor(model.conc_mol_comp["SO4"])
+            )
+            self.set_constraint_scaling_factor(model.hso4_dissociation, sf, overwrite=overwrite)
+
 # -----------------------------------------------------------------------------
 # Leach solution property package
 @declare_process_block_class("LeachSolutionParameters")
@@ -56,7 +146,6 @@ class LeachSolutionParameterData(PhysicalParameterBlock):
     Second dissociation governed by equilibrium (Ka2) - inherent reaction.
 
     """
-
     def build(self):
         super().build()
 
@@ -186,6 +275,7 @@ class LeachSolutionParameterData(PhysicalParameterBlock):
 
 
 class _LeachSolutionStateBlock(StateBlock):
+    default_scaler = LeachSolutionPropertiesScaler
     def fix_initialization_states(self):
         """
         Fixes state variables for state blocks.
@@ -334,92 +424,3 @@ class LeachSolutionStateBlockData(StateBlockData):
             "temperature": self.temperature,
             "pressure": self.pressure,
         }
-
-contaminant_list = ["Fe", "Al", "Ca"]
-ree_list = ["Sc", "Y", "La", "Ce", "Pr", "Nd", "Sm", "Gd", "Dy"]
-
-# -----------------------------------------------------------------------------
-# Leach solution property package scaler
-class LeachSolutionPropertiesScaler(CustomScalerBase):
-    """
-    Scaler for saponification properties package.
-
-    Flow and concentration are scaled by default value (if no user input provided),
-    pressure is scaled assuming order of magnitude of 1e5 Pa, and temperature is
-    scaled using the average of the bounds. Constraints using the inverse maximum
-    scheme.
-    """
-
-    CONFIG = CustomScalerBase.CONFIG
-    # CONFIG.declare(
-    #     "user_scaling_dict",  # TODO: Need better name
-    #     ConfigValue(
-    #         default=None,
-    #         description="Dictionary of scaling factors ",
-    #     ),
-    # )
-
-    # UNIT_SCALING_FACTORS = {
-    #     # "QuantityName: (reference units, scaling factor)
-    #     "Pressure": (units.Pa, 1e-5), # Pressure 
-    # }
-
-    DEFAULT_SCALING_FACTORS = {
-        "flow_vol": 1e-2,
-        "pressure": 1e-5,
-        "temperature": 1/300, 
-        "conc_mass_comp[H2O]": 1e-6,
-        "conc_mass_comp[H]" : 1e-1,
-        "conc_mass_comp[SO4]": 1e-2,
-        "conc_mass_comp[Cl]": 1e-3,
-    }
-    for ree in ree_list:
-        DEFAULT_SCALING_FACTORS[f"conc_mass_comp[{ree}]"] = 10
-    for contaminant in contaminant_list:
-        DEFAULT_SCALING_FACTORS[f"conc_mass_comp[{contaminant}]"] = 1e-2
-    
-
-    def variable_scaling_routine(
-        self, model, overwrite: bool = False, submodel_scalers: dict = None
-    ):
-        # Scale state variables
-        self.scale_variable_by_default(model.flow_vol, overwrite=overwrite)
-        self.scale_variable_by_default(model.pressure, overwrite=overwrite)
-        self.scale_variable_by_default(model.temperature, overwrite=overwrite)
-        for idx, var in model.conc_mass_comp.items():
-            self.scale_variable_by_default(var, overwrite=overwrite)
-
-        # Scale other variables
-        params = model.params
-
-        # Leaving as a record that pH is well-scaled
-        self.set_variable_scaling_factor(model.pH_phase, 1, overwrite=overwrite)
-        for idx, var in model.conc_mol_comp.items():
-            sf = get_scaling_factor(model.conc_mass_comp[idx]) * value(
-                units.convert(
-                    params.mw[idx],
-                    to_units=units.mg/units.mol
-                )
-            )
-            self.set_variable_scaling_factor(var, sf, overwrite=overwrite)
-
-
-    def constraint_scaling_routine(
-        self, model, overwrite: bool = False, submodel_scalers: dict = None
-    ):
-        for idx, con in model.molar_concentration_constraint.items():
-            sf = get_scaling_factor(model.conc_mass_comp[idx])
-            self.set_constraint_scaling_factor(con, sf, overwrite=overwrite)
-            if idx == "H":
-                self.set_constraint_scaling_factor(model.pH_constraint, sf, overwrite=overwrite)
-    
-        if model.is_property_constructed("h2o_concentration"):
-            sf = get_scaling_factor(model.conc_mass_comp["H2O"])
-            self.set_constraint_scaling_factor(model.h2o_concentration, sf, overwrite=overwrite)
-        
-        if model.is_property_constructed("hso4_dissociation"):
-            sf = (
-                get_scaling_factor(model.conc_mol_comp["H"])
-                * get_scaling_factor(model.conc_mol_comp["SO4"])
-            )
-            self.set_constraint_scaling_factor(model.h2o_concentration, sf, overwrite=overwrite)

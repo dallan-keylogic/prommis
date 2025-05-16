@@ -93,10 +93,85 @@ from idaes.core import (
 from idaes.core.util.config import is_physical_parameter_block
 from idaes.core.util.constants import Constants
 from idaes.core.initialization import ModularInitializerBase, BlockTriangularizationInitializer
+from idaes.core.scaling import ConstraintScalingScheme, CustomScalerBase, get_scaling_factor
 from idaes.core.util.model_statistics import degrees_of_freedom
 
 from idaes.models.unit_models.mscontactor import MSContactor
 
+class SolventExtractionScaler(CustomScalerBase):
+    """
+    Scaler for the SolventExtraction unit model.
+    """
+
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        """
+        Variable scaling routine for SolventExtraction.
+
+        Args:
+            model: instance of SolventExraction to be scaled
+            overwrite: whether to overwrite existing scaling factors
+            submodel_scalers: dict of Scalers to use for sub-models, keyed by submodel local name
+
+        Returns:
+            None
+        """
+        if submodel_scalers is None:
+            submodel_scalers = {}
+
+        # There are no Vars besides those created by the MSContactor
+        self.call_submodel_scaler_method(
+            submodel=model.mscontactor,
+            submodel_scalers=submodel_scalers,
+            method="variable_scaling_routine",
+            overwrite=overwrite,
+        )
+
+                    
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        """
+        Routine to apply scaling factors to constraints in model.
+
+        Args:
+            model: model to be scaled
+            overwrite: whether to overwrite existing scaling factors
+            submodel_scalers: dict of Scalers to use for sub-models, keyed by submodel local name
+
+        Returns:
+            None
+        """
+
+        self.call_submodel_scaler_method(
+            submodel=model.mscontactor,
+            submodel_scalers=submodel_scalers,
+            method="constraint_scaling_routine",
+            overwrite=overwrite,
+        )
+        for idx, con in model.distribution_extent_constraint.items():
+            t, e, j_aq, j_o = idx
+            self.scale_constraint_by_variable(
+                con,
+                model.mscontactor.organic[t, e].conc_mol_comp[j_o],
+                overwrite=overwrite
+            )
+
+        for idx, con in model.aqueous_pressure_constraint.items():
+            t, e = idx
+            self.scale_constraint_by_variable(
+                con,
+                model.mscontactor.aqueous[t, e].pressure,
+                overwrite=overwrite
+            )
+        for idx, con in model.organic_pressure_constraint.items():
+            t, e = idx
+            self.scale_constraint_by_variable(
+                con,
+                model.mscontactor.organic[t, e].pressure,
+                overwrite=overwrite
+            )
 
 class SolventExtractionInitializer(ModularInitializerBase):
     """
@@ -157,7 +232,7 @@ class SolventExtractionInitializer(ModularInitializerBase):
             },
             calculate_variable_options=self.config.calculate_variable_options
         )
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         model.mscontactor.heterogeneous_reaction_extent.unfix()
 
         other_vars, element_vars = flatten_dae_components(model, model.mscontactor.elements, ctype=Var)
@@ -274,6 +349,7 @@ Stream_Config.declare(
 class SolventExtractionData(UnitModelBlockData):
 
     default_initializer = SolventExtractionInitializer
+    default_scaler = SolventExtractionScaler
 
     CONFIG = UnitModelBlockData.CONFIG()
 

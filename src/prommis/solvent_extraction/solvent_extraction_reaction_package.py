@@ -23,6 +23,38 @@ from idaes.core.scaling import CustomScalerBase, get_scaling_factor
 from idaes.core.util.misc import add_object_reference
 
 
+class SolventExtractionReactionScaler(CustomScalerBase):
+    """
+    Scaler for the solvent extraction reaction package.
+    """
+
+    DEFAULT_SCALING_FACTORS = {}
+
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        aq_block = model.parent_block().aqueous[model.index()]
+        org_block = model.parent_block().organic[model.index()]
+        for e in model.params.element_list:
+            sf_aq = get_scaling_factor(aq_block.conc_mol_comp[e], default=1)
+            sf_org = get_scaling_factor(org_block.conc_mol_comp[e+"_o"], default=1)
+            self.set_variable_scaling_factor(
+                model.distribution_coefficient[e],
+                sf_org/sf_aq,
+                overwrite=overwrite
+            )
+                
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        for e in model.params.element_list:
+            sf = get_scaling_factor(model.distribution_coefficient[e])
+            self.set_constraint_scaling_factor(
+                model.distribution_constraint[e],
+                sf,
+                overwrite=overwrite
+            )
+
 # -----------------------------------------------------------------------------
 # Leach solution property package
 @declare_process_block_class("SolventExtractionReactions")
@@ -76,7 +108,6 @@ class SolventExtractionReactionsData(
     calculated from REESim file and assumed constant.
 
     """
-
     def build(self):
         super().build()
 
@@ -275,14 +306,15 @@ class SolventExtractionReactionsData(
 
 
 class _SolventExtractionReactionsBlock(ProcessBlock):
-    pass
+    default_scaler = SolventExtractionReactionScaler
 
 
 @declare_process_block_class(
     "SolventExtractionReactionsBlock", block_class=_SolventExtractionReactionsBlock
 )
 class SolventExtractionReactionsData(ProcessBlockData):
-    # Create Class ConfigBlock
+    default_scaler = SolventExtractionReactionScaler
+
     CONFIG = ProcessBlockData.CONFIG()
     CONFIG.declare(
         "parameters",
@@ -325,36 +357,3 @@ class SolventExtractionReactionsData(ProcessBlockData):
     def params(self):
         return self._params
 
-class SolventExractionReactionScaler(CustomScalerBase):
-    """
-    Scaler for the solvent extraction reaction package.
-    """
-
-    DEFAULT_SCALING_FACTORS = {}
-
-    def variable_scaling_routine(
-        self, model, overwrite: bool = False, submodel_scalers: dict = None
-    ):
-        aq_block = model.parent_block().aqueous[model.index()]
-        org_block = model.parent_block().organic[model.index()]
-        if model.is_property_constructed("distribution_coefficient"):
-            for e in model.params.element_list:
-                sf_aq = get_scaling_factor(aq_block.conc_mol_comp[e], default=1)
-                sf_org = get_scaling_factor(org_block.conc_mol_comp[e+"_o"], default=1)
-                self.set_variable_scaling_factor(
-                    model.distribution_coefficient[e],
-                    sf_org/sf_aq,
-                    overwrite=overwrite
-                )
-                
-    def constraint_scaling_routine(
-        self, model, overwrite: bool = False, submodel_scalers: dict = None
-    ):
-        if model.is_property_constructed("distribution_eq"):
-            for e in model.params.element_list:
-                sf = get_scaling_factor(model.distribution_coefficient[e])
-                self.set_constraint_scaling_factor(
-                    model.distribution_eq[e],
-                    sf,
-                    overwrite=overwrite
-                )
