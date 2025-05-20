@@ -192,17 +192,18 @@ from idaes.models_extra.power_generation.properties.natural_gas_PR import (
 
 from prommis.leaching.leach_reactions import CoalRefuseLeachingReactions
 from prommis.leaching.leach_solids_properties import CoalRefuseParameters
-from prommis.leaching.leach_solution_properties import LeachSolutionParameters
+from prommis.leaching.leach_solution_properties import LeachSolutionParameters, LeachSolutionPropertiesScaler
 from prommis.leaching.leach_train import LeachingTrain, LeachingTrainInitializer
 from prommis.precipitate.precipitate_liquid_properties import AqueousParameter
 from prommis.precipitate.precipitate_solids_properties import PrecipitateParameters
 from prommis.precipitate.precipitator import Precipitator
 from prommis.roasting.ree_oxalate_roaster import REEOxalateRoaster
-from prommis.solvent_extraction.ree_og_distribution import REESolExOgParameters
+from prommis.solvent_extraction.ree_og_distribution import REESolExOgParameters, OrganicSolventPropertiesScaler
 from prommis.solvent_extraction.translator_leach_precip import TranslatorLeachPrecip
 from prommis.solvent_extraction.solvent_extraction import (
     SolventExtraction,
     SolventExtractionInitializer,
+    SolventExtractionScaler,
 )
 from prommis.solvent_extraction.solvent_extraction_reaction_package import SolventExtractionReactions
 from prommis.uky.costing.costing_dictionaries import load_REE_costing_dictionary
@@ -242,7 +243,7 @@ def main():
     # we want to be able to adjust the total recycle flow rate, not just the make-up portion of it
     fix_organic_recycle(scaled_model)
 
-    scaled_results = solve_system(scaled_model)
+    scaled_results = solve_system(scaled_model, tee=True)
 
     if not check_optimal_termination(scaled_results):
         raise RuntimeError(
@@ -752,6 +753,11 @@ def set_scaling(m):
 
     sb = ScalerBase()
 
+    # scaler = SolventExtractionScaler()
+    
+    # for unit in m.fs.component_data_objects(SolventExtraction, descend_into=True):
+    #     scaler.scale_model(unit)
+
     for var in m.fs.component_data_objects(Var, descend_into=True):
         if "temperature" in var.name:
             sb.set_variable_scaling_factor(var, 1e-2)
@@ -760,7 +766,9 @@ def set_scaling(m):
         if "flow_mol" in var.name:
             sb.set_variable_scaling_factor(var, 1e-3)
 
-    return m
+
+       
+
 
 
 def set_operating_conditions(m):
@@ -890,7 +898,7 @@ def set_operating_conditions(m):
     m.fs.rougher_org_make_up.conc_mass_comp[0, "DEHPA"].fix(dehpa_conc)
     m.fs.rougher_org_make_up.conc_mass_comp[0, "Kerosene"].fix(kerosene_conc)
 
-    m.fs.acid_feed1.flow_vol.fix(0.20)
+    m.fs.acid_feed1.flow_vol.fix(200)
     m.fs.acid_feed1.properties[0.0].pressure.fix(P_atm)
     m.fs.acid_feed1.properties[0.0].temperature.fix(Temp_room)
     m.fs.acid_feed1.conc_mass_comp[0, "H2O"].fix(1000000)
@@ -1283,7 +1291,6 @@ def initialize_system(m):
         elif unit == m.fs.solex_rougher_scrub:
             _log.info(f"Initializing {unit}")
             initializer_sx.initialize(unit)
-            import pdb; pdb.set_trace()
 
         elif unit == m.fs.solex_rougher_strip:
             _log.info(f"Initializing {unit}")
