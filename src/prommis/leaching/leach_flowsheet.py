@@ -21,7 +21,7 @@ from pyomo.environ import (
 
 from idaes.core import FlowsheetBlock
 
-from prommis.leaching.leach_train import LeachingTrain, LeachingTrainInitializer
+from prommis.leaching.leach_train import LeachingTrain, LeachingTrainInitializer, LeachingTrainScaler
 from prommis.leaching.leach_reactions import CoalRefuseLeachingReactions
 from prommis.leaching.leach_solids_properties import CoalRefuseParameters
 from prommis.leaching.leach_solution_properties import LeachSolutionParameters
@@ -65,7 +65,9 @@ def set_inputs(m):
     # Liquid feed state
     m.fs.leach.liquid_inlet.flow_vol.fix(224.3 * units.L / units.hour)
     m.fs.leach.liquid_inlet.conc_mass_comp.fix(1e-10 * units.mg / units.L)
-
+    m.fs.leach.liquid_inlet.conc_mass_comp[0, "H2O"].fix(
+        1 * units.kg / units.L
+    )
     m.fs.leach.liquid_inlet.conc_mass_comp[0, "H"].fix(
         2 * 0.05 * 1e3 * units.mg / units.L
     )
@@ -115,30 +117,39 @@ def set_scaling(m):
     """
     Apply scaling factors to improve solver performance.
     """
-    m.scaling_factor = Suffix(direction=Suffix.EXPORT)
+    LeachingTrainScaler(
+        zero_tolerance=1e-18,
+        max_variable_scaling_factor=float("inf"),
+        min_variable_scaling_factor=0,
+        max_constraint_scaling_factor=float("inf"),
+        min_constraint_scaling_factor=0,
+        max_expression_scaling_hint=float("inf"),
+        min_expression_scaling_hint=0
+    ).scale_model(m.fs.leach)
+    # m.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
-    for j in m.fs.coal.component_list:
-        if j not in ["Al2O3", "Fe2O3", "CaO", "inerts"]:
-            m.scaling_factor[m.fs.leach.mscontactor.solid[0.0, 1].mass_frac_comp[j]] = (
-                1e5
-            )
-            m.scaling_factor[
-                m.fs.leach.mscontactor.solid_inlet_state[0.0].mass_frac_comp[j]
-            ] = 1e5
-            m.scaling_factor[
-                m.fs.leach.mscontactor.heterogeneous_reactions[0.0, 1].reaction_rate[j]
-            ] = 1e5
-            m.scaling_factor[m.fs.leach.mscontactor.solid[0.0, 1].conversion_eq[j]] = (
-                1e3
-            )
-            m.scaling_factor[
-                m.fs.leach.mscontactor.solid_inlet_state[0.0].conversion_eq[j]
-            ] = 1e3
-            m.scaling_factor[
-                m.fs.leach.mscontactor.heterogeneous_reactions[0.0, 1].reaction_rate_eq[
-                    j
-                ]
-            ] = 1e5
+    # for j in m.fs.coal.component_list:
+    #     if j not in ["Al2O3", "Fe2O3", "CaO", "inerts"]:
+    #         m.scaling_factor[m.fs.leach.mscontactor.solid[0.0, 1].mass_frac_comp[j]] = (
+    #             1e5
+    #         )
+    #         m.scaling_factor[
+    #             m.fs.leach.mscontactor.solid_inlet_state[0.0].mass_frac_comp[j]
+    #         ] = 1e5
+    #         # m.scaling_factor[
+    #         #     m.fs.leach.mscontactor.heterogeneous_reactions[0.0, 1].reaction_rate[j]
+    #         # ] = 1e5
+    #         m.scaling_factor[m.fs.leach.mscontactor.solid[0.0, 1].conversion_eq[j]] = (
+    #             1e3
+    #         )
+    #         m.scaling_factor[
+    #             m.fs.leach.mscontactor.solid_inlet_state[0.0].conversion_eq[j]
+    #         ] = 1e3
+    #         # m.scaling_factor[
+    #         #     m.fs.leach.mscontactor.heterogeneous_reactions[0.0, 1].reaction_rate_eq[
+    #         #         j
+    #         #     ]
+    #         # ] = 1e5
 
 
 # -------------------------------------------------------------------------------------

@@ -84,7 +84,88 @@ from idaes.core import (
 from idaes.core.util.config import is_physical_parameter_block
 from idaes.models.unit_models.mscontactor import MSContactor
 from idaes.core.initialization import ModularInitializerBase
+from idaes.core.scaling import CustomScalerBase, get_scaling_factor
 
+class LeachingTrainScaler(CustomScalerBase):
+    """
+    Scaler for the LeachingTrain unit model.
+    """
+
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        """
+        Variable scaling routine for LeachingTrain.
+
+        Args:
+            model: instance of LeachingTrain to be scaled
+            overwrite: whether to overwrite existing scaling factors
+            submodel_scalers: dict of Scalers to use for sub-models, keyed by submodel local name
+
+        Returns:
+            None
+        """
+        if submodel_scalers is None:
+            submodel_scalers = {}
+
+        self.call_submodel_scaler_method(
+            submodel=model.mscontactor,
+            submodel_scalers=submodel_scalers,
+            method="variable_scaling_routine",
+            overwrite=overwrite,
+        )
+
+        # The only unit model level variable is volume,
+        # which is typically fixed and should be 
+        # modified to refer to the MSContactor volume instead
+
+                    
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        """
+        Routine to apply scaling factors to constraints in model.
+
+        Args:
+            model: model to be scaled
+            overwrite: whether to overwrite existing scaling factors
+            submodel_scalers: dict of Scalers to use for sub-models, keyed by submodel local name
+
+        Returns:
+            None
+        """
+
+        self.call_submodel_scaler_method(
+            submodel=model.mscontactor,
+            submodel_scalers=submodel_scalers,
+            method="constraint_scaling_routine",
+            overwrite=overwrite,
+        )
+
+        flow_basis = model.mscontactor.flow_basis
+        uom = model.mscontactor.uom
+        if flow_basis == MaterialFlowBasis.mass:
+            m_units = uom.MASS
+            x_units = m_units / uom.TIME
+        elif flow_basis == MaterialFlowBasis.molar:
+            m_units = uom.AMOUNT
+            x_units = m_units / uom.TIME
+        else:
+            # Undefined
+            x_units = None
+
+        for idx, con in model.mscontactor.heterogeneous_reaction_extent_constraint.items():
+            t, s, r = idx
+            nom = self.get_expression_nominal_value(
+                units.convert(
+                    model.mscontactor.heterogeneous_reaction_extent[t, s, r], to_units=x_units
+                )
+            )
+            self.set_constraint_scaling_factor(
+                con,
+                1 / nom,
+                overwrite=overwrite
+            )
 
 class LeachingTrainInitializer(ModularInitializerBase):
     """
@@ -259,6 +340,8 @@ class LeachingTrainData(UnitModelBlockData):
         uom = self.mscontactor.uom
 
         # Reactor volume
+        # TODO we shouldn't have both a volume variable at
+        # the MSContactor level and LeachTrain level
         self.volume = Var(
             self.flowsheet().time,
             self.mscontactor.elements,

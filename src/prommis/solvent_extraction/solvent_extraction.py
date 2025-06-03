@@ -279,7 +279,7 @@ class SolventExtractionInitializer(ModularInitializerBase):
 
         # self.restore_model_state(model)
         # self.fix_initialization_states(model)
-
+        import pdb; pdb.set_trace()
         init_model = solver.solve(model, tee=True)
         # import pdb; pdb.set_trace()
         # TransformationFactory("contrib.strip_var_bounds").revert(model)

@@ -132,13 +132,23 @@ if __name__ == "__main__":
 
     initializer = SolventExtractionInitializer()
     initializer.initialize(m.fs.solex)
+    scaler_config = {
+        "zero_tolerance": 1e-18,
+        "max_variable_scaling_factor": float("inf"),
+        "min_variable_scaling_factor": 0,
+        "max_constraint_scaling_factor": float("inf"),
+        "min_constraint_scaling_factor": 0,
+        "max_expression_scaling_hint": float("inf"),
+        "min_expression_scaling_hint": 0
+    }
 
-    leach_scaler = LeachSolutionPropertiesScaler()
+    leach_scaler = LeachSolutionPropertiesScaler(**scaler_config)
     # H2SO4 is acid here, so almost no chloride
     leach_scaler.DEFAULT_SCALING_FACTORS["conc_mass_comp[Cl]"] = 1e7
-    solex_scaler = SolventExtractionScaler()
+    solex_scaler = SolventExtractionScaler(**scaler_config)
     submodel_scalers=ComponentMap()
     submodel_scalers[m.fs.solex.mscontactor.aqueous_inlet_state] = leach_scaler
+    submodel_scalers[m.fs.solex.mscontactor.aqueous] = leach_scaler
 
     solex_scaler.scale_model(m.fs.solex, submodel_scalers=submodel_scalers)
     m_scaled = TransformationFactory("core.scale_model").create_using(m, rename=False)

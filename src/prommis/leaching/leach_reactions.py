@@ -18,8 +18,41 @@ from pyomo.environ import Constraint, Param, Set, Var, units
 
 from idaes.core import ProcessBlock, ProcessBlockData, declare_process_block_class
 from idaes.core.base import property_meta
+from idaes.core.scaling import CustomScalerBase, get_scaling_factor
 from idaes.core.util.misc import add_object_reference
 
+oxide_element_dict = {
+    "Al2O3": "Al",
+    "Fe2O3": "Fe",
+    "CaO": "Ca",
+    "Sc2O3": "Sc",
+    "Y2O3": "Y",
+    "La2O3": "La",
+    "Ce2O3": "Ce",
+    "Pr2O3": "Pr",
+    "Nd2O3": "Nd",
+    "Sm2O3": "Sm",
+    "Gd2O3": "Gd",
+    "Dy2O3": "Dy",
+}
+
+class LeachReactionScaler(CustomScalerBase):
+    """
+    Scaler for the leach reaction package.
+    No variables or constraints, so no need for scaling.
+    """
+
+    DEFAULT_SCALING_FACTORS = {}
+
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        pass
+                
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        pass
 
 # -----------------------------------------------------------------------------
 # Leach solution property package
@@ -244,19 +277,16 @@ class CoalRefuseLeachingReactionsData(ProcessBlockData):
 
         add_object_reference(self, "_params", self.config.parameters)
 
-        self.reaction_rate = Var(
-            self.params.reaction_idx,
-            initialize=0,
-            units=units.mol / units.litre / units.hour,
-        )
-
-        def rule_reaction_rate_eq(b, r):
+        @self.Expression(self.params.reaction_idx)
+        def reaction_rate(b, r):
             l_block = b.parent_block().liquid[b.index()]
             s_block = b.parent_block().solid[b.index()]
 
             h_conc = l_block.conc_mol_comp["H"]
 
             # Pulp density calculation
+            # Because we're getting outlet flow rates, this calculation works
+            # both at steady state and for dynamic operation
             eps = units.convert(
                 s_block.flow_mass
                 / (s_block.flow_mass / s_block.params.dens_mass + l_block.flow_vol),
@@ -265,16 +295,12 @@ class CoalRefuseLeachingReactionsData(ProcessBlockData):
 
             # Empirical correlation with varying exponent,
             # strip units from acid concentration for simplicity
-            return b.reaction_rate[r] == (
+            return (
                 eps
                 * b.params.B[r]
                 * (h_conc / (units.mol / units.L)) ** b.params.A[r]
                 * (1 - s_block.conversion[r]) ** (2 / 3)
             )
-
-        self.reaction_rate_eq = Constraint(
-            self.params.reaction_idx, rule=rule_reaction_rate_eq
-        )
 
     @property
     def params(self):

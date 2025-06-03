@@ -38,18 +38,6 @@ class OrganicSolventPropertiesScaler(CustomScalerBase):
     """
 
     CONFIG = CustomScalerBase.CONFIG
-    # CONFIG.declare(
-    #     "user_scaling_dict",  # TODO: Need better name
-    #     ConfigValue(
-    #         default=None,
-    #         description="Dictionary of scaling factors ",
-    #     ),
-    # )
-
-    # UNIT_SCALING_FACTORS = {
-    #     # "QuantityName: (reference units, scaling factor)
-    #     "Pressure": (units.Pa, 1e-5), # Pressure 
-    # }
 
     DEFAULT_SCALING_FACTORS = {
         "flow_vol": 1e-2,

@@ -193,7 +193,7 @@ from idaes.models_extra.power_generation.properties.natural_gas_PR import (
 from prommis.leaching.leach_reactions import CoalRefuseLeachingReactions
 from prommis.leaching.leach_solids_properties import CoalRefuseParameters
 from prommis.leaching.leach_solution_properties import LeachSolutionParameters, LeachSolutionPropertiesScaler
-from prommis.leaching.leach_train import LeachingTrain, LeachingTrainInitializer
+from prommis.leaching.leach_train import LeachingTrain, LeachingTrainInitializer, LeachingTrainScaler
 from prommis.precipitate.precipitate_liquid_properties import AqueousParameter
 from prommis.precipitate.precipitate_solids_properties import PrecipitateParameters
 from prommis.precipitate.precipitator import Precipitator
@@ -227,7 +227,7 @@ def main():
 
     scaling = TransformationFactory("core.scale_model")
     scaled_model = scaling.create_using(m, rename=False)
-
+    import pdb; pdb.set_trace()
     if degrees_of_freedom(scaled_model) != 0:
         raise AssertionError(
             "The degrees of freedom are not equal to 0."
@@ -236,6 +236,8 @@ def main():
         )
 
     initialize_system(scaled_model)
+
+    return m, None
 
     solve_system(scaled_model)
 
@@ -749,22 +751,43 @@ def set_scaling(m):
     """
 
     # Scaling
-    m.scaling_factor = Suffix(direction=Suffix.EXPORT)
+    # m.scaling_factor = Suffix(direction=Suffix.EXPORT)
+
+    config = {
+        "zero_tolerance": 1e-18,
+        "max_variable_scaling_factor": float("inf"),
+        "min_variable_scaling_factor": 0,
+        "max_constraint_scaling_factor": float("inf"),
+        "min_constraint_scaling_factor": 0,
+        "max_expression_scaling_hint": float("inf"),
+        "min_expression_scaling_hint": 0,
+    }
+
+    leach_scaler = LeachingTrainScaler(**config)
+    
+    for unit in m.fs.block_data_objects(LeachingTrain, descend_into=False):
+        print(f"Scaling {unit.name}")
+        
+
+    sx_scaler = SolventExtractionScaler(**config)
+    
+    for unit in m.fs.block_data_objects(descend_into=True):
+        if isinstance(unit, SolventExtraction):
+            print(f"Scaling {unit.name}")
+            sx_scaler.scale_model(unit)
+        elif isinstance(unit, LeachingTrain):
+            print(f"Scaling {unit.name}")
+            leach_scaler.scale_model(unit)
 
     sb = ScalerBase()
 
-    # scaler = SolventExtractionScaler()
-    
-    # for unit in m.fs.component_data_objects(SolventExtraction, descend_into=True):
-    #     scaler.scale_model(unit)
-
     for var in m.fs.component_data_objects(Var, descend_into=True):
         if "temperature" in var.name:
-            sb.set_variable_scaling_factor(var, 1e-2)
+            sb.set_variable_scaling_factor(var, 1e-2, overwrite=False)
         if "pressure" in var.name:
-            sb.set_variable_scaling_factor(var, 1e-5)
+            sb.set_variable_scaling_factor(var, 1e-5, overwrite=False)
         if "flow_mol" in var.name:
-            sb.set_variable_scaling_factor(var, 1e-3)
+            sb.set_variable_scaling_factor(var, 1e-3, overwrite=False)
 
 
        
@@ -779,8 +802,10 @@ def set_operating_conditions(m):
         m: pyomo model
     """
     # Constants
-    dehpa_conc = 975.8e3 * units.mg / units.L
-    kerosene_conc = 8.2e5 * units.mg / units.L
+    dosage = 5 # Percentage
+    m.fs.reaxn.extractant_dosage = dosage
+    dehpa_conc = dosage / 100 * 975.8e3 * units.mg / units.L
+    kerosene_conc = (1 - dosage/100) * 8.2e5 * units.mg / units.L
     Temp_room = 303 * units.K
     P_atm = 101235 * units.Pa
 
@@ -919,7 +944,7 @@ def set_operating_conditions(m):
     m.fs.acid_feed1.conc_mass_comp[0, "Gd"].fix(eps)
     m.fs.acid_feed1.conc_mass_comp[0, "Dy"].fix(eps)
 
-    m.fs.acid_feed2.flow_vol.fix(0.09)
+    m.fs.acid_feed2.flow_vol.fix(200)
     m.fs.acid_feed2.properties[0.0].pressure.fix(P_atm)
     m.fs.acid_feed2.properties[0.0].temperature.fix(Temp_room)
     m.fs.acid_feed2.conc_mass_comp[0, "H2O"].fix(1000000)
@@ -1098,29 +1123,29 @@ def initialize_system(m):
         print(o[0].name)
     eps2 = 1e-3
     tear_guesses1 = {
-        "flow_vol": {0: 747.99},
+        "flow_vol": {0: 7.4799},
         "conc_mass_comp": {
-            (0, "Al"): 180.84,
-            (0, "Ca"): 28.93,
-            (0, "Ce"): 5.48,
+            (0, "Al"): 1.8084,
+            (0, "Ca"): 0.2893,
+            (0, "Ce"): 54.8,
             (0, "Dy"): eps2,
-            (0, "Fe"): 269.98,
+            (0, "Fe"): 2.6998,
             (0, "Gd"): eps2,
-            (0, "H"): 20.06,
-            (0, "H2O"): 1000000,
-            (0, "HSO4"): 963.06,
+            (0, "H"): 2.006,
+            (0, "H2O"): 1,
+            (0, "HSO4"): 0.96306,
             (0, "Cl"): eps2,
-            (0, "La"): 0.0037,
+            (0, "La"): 0.037,
             (0, "Nd"): eps2,
             (0, "Pr"): eps2,
-            (0, "SO4"): 486.24,
-            (0, "Sc"): 4.17e-11,
-            (0, "Sm"): 6.30e-10,
-            (0, "Y"): 7.18e-11,
+            (0, "SO4"): 4.8624,
+            (0, "Sc"): 4.17e-10,
+            (0, "Sm"): 6.30e-9,
+            (0, "Y"): 7.18e-10,
         },
     }
     tear_guesses2 = {
-        "flow_vol": {0: 62.01},
+        "flow_vol": {0: 0.6201},
         "conc_mass_comp": {
             (0, "Al_o"): eps2,
             (0, "Ca_o"): eps2,
@@ -1131,37 +1156,37 @@ def initialize_system(m):
             (0, "La_o"): eps2,
             (0, "Nd_o"): eps2,
             (0, "Pr_o"): eps2,
-            (0, "Sc_o"): 250,
+            (0, "Sc_o"): 2500,
             (0, "Sm_o"): eps2,
             (0, "Y_o"): eps2,
-            (0, "DEHPA"): 9.758e5,
-            (0, "Kerosene"): 8.20e5,
+            (0, "DEHPA"): 1,
+            (0, "Kerosene"): 0.820,
         },
     }
     tear_guesses3 = {
-        "flow_vol": {0: 520},
+        "flow_vol": {0: 5.2},
         "conc_mass_comp": {
-            (0, "Al"): 430,
-            (0, "Ca"): 99,
-            (0, "Ce"): 2,
-            (0, "Dy"): 0.01,
-            (0, "Fe"): 660,
-            (0, "Gd"): 0.1,
-            (0, "H"): 2,
-            (0, "H2O"): 1000000,
-            (0, "HSO4"): 900,
-            (0, "Cl"): 0.1,
-            (0, "La"): 1,
-            (0, "Nd"): 1,
-            (0, "Pr"): 0.1,
-            (0, "SO4"): 4000,
-            (0, "Sc"): 0.05,
-            (0, "Sm"): 0.07,
-            (0, "Y"): 0.1,
+            (0, "Al"): 4.30,
+            (0, "Ca"): 0.99,
+            (0, "Ce"): 20,
+            (0, "Dy"): 0.1,
+            (0, "Fe"): 6.60,
+            (0, "Gd"): 10,
+            (0, "H"): 20,
+            (0, "H2O"): 1,
+            (0, "HSO4"): 0.9,
+            (0, "Cl"): 1e-4,
+            (0, "La"): 10,
+            (0, "Nd"): 10,
+            (0, "Pr"): 1,
+            (0, "SO4"): 4.000,
+            (0, "Sc"): 0.5,
+            (0, "Sm"): 0.7,
+            (0, "Y"): 1,
         },
     }
     tear_guesses4 = {
-        "flow_vol": {0: 64},
+        "flow_vol": {0: 0.64},
         "conc_mass_comp": {
             (0, "Al_o"): eps2,
             (0, "Ca_o"): eps2,
@@ -1172,33 +1197,33 @@ def initialize_system(m):
             (0, "La_o"): eps2,
             (0, "Nd_o"): eps2,
             (0, "Pr_o"): eps2,
-            (0, "Sc_o"): 321.34,
+            (0, "Sc_o"): 3213.4,
             (0, "Sm_o"): eps2,
             (0, "Y_o"): eps2,
-            (0, "DEHPA"): 9.758e5,
-            (0, "Kerosene"): 8.20e5,
+            (0, "DEHPA"): 1,
+            (0, "Kerosene"): 0.820,
         },
     }
     tear_guesses5 = {
-        "flow_vol": {0: 5.7},
+        "flow_vol": {0: 0.057},
         "conc_mass_comp": {
-            (0, "Al"): 5,
-            (0, "Ca"): 16,
-            (0, "Ce"): 346,
-            (0, "Dy"): 6,
-            (0, "Fe"): 1,
-            (0, "Gd"): 22,
-            (0, "H"): 14,
-            (0, "H2O"): 1000000,
+            (0, "Al"): 0.05,
+            (0, "Ca"): 0.16,
+            (0, "Ce"): 3460,
+            (0, "Dy"): 60,
+            (0, "Fe"): 0.01,
+            (0, "Gd"): 220,
+            (0, "H"): 1.4,
+            (0, "H2O"): 1,
             (0, "HSO4"): eps2,
-            (0, "Cl"): 1400,
-            (0, "La"): 160,
-            (0, "Nd"): 121,
-            (0, "Pr"): 30,
+            (0, "Cl"): 1.4,
+            (0, "La"): 1600,
+            (0, "Nd"): 1210,
+            (0, "Pr"): 300,
             (0, "SO4"): eps2,
-            (0, "Sc"): 149.2,
-            (0, "Sm"): 13,
-            (0, "Y"): 18,
+            (0, "Sc"): 1492,
+            (0, "Sm"): 130,
+            (0, "Y"): 180,
         },
     }
 
