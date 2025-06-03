@@ -241,45 +241,47 @@ class SolventExtractionInitializer(ModularInitializerBase):
         solver = self._get_solver()
         # TransformationFactory("contrib.strip_var_bounds").apply_to(model, reversible=True)
         # import pdb; pdb.set_trace()
-        # for e in model.mscontactor.elements:
-        #     self.restore_model_state(model)
-        #     self.fix_initialization_states(model)
+        for e in model.mscontactor.elements:
+            self.restore_model_state(model)
+            self.fix_initialization_states(model)
 
-        #     for var in other_vars:
-        #         var.fix()
-        #     for con in other_cons:
-        #         con.deactivate()
+            for var in other_vars:
+                var.fix()
+            for con in other_cons:
+                con.deactivate()
 
-        #     for e2 in model.mscontactor.elements:
-        #         if e2 != e:
-        #             for var in element_vars:
-        #                 var[e2].fix()
-        #             for con in element_cons:
-        #                 con[e2].deactivate()
-        #     assert degrees_of_freedom(model) == 0
-        #     print(f"Initializing element {e}")
-        #     # model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        #     # model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        #     for idx in model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient:
-        #         calculate_variable_from_constraint(
-        #             model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient[idx],
-        #             model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint[idx],
-        #             # **self.config.calculate_variable_options
-        #         )
-        #     model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.deactivate()
-        #     model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.fix()
-        #     bt_init.initialize(model)
-        #     model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.activate()
-        #     model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.unfix()
-        #     results = solver.solve(model, tee=True)
-        #     if not check_optimal_termination(results):
-        #         from idaes.core.util.model_diagnostics import DiagnosticsToolbox
-        #         diag_tbx = DiagnosticsToolbox(model)
-        #         import pdb; pdb.set_trace()
+            for e2 in model.mscontactor.elements:
+                if e2 != e:
+                    for var in element_vars:
+                        var[e2].fix()
+                    for con in element_cons:
+                        con[e2].deactivate()
+            assert degrees_of_freedom(model) == 0
+            print(f"Initializing element {e}")
+            # model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            # model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            for idx in model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient:
+                calculate_variable_from_constraint(
+                    model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient[idx],
+                    model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint[idx],
+                    # **self.config.calculate_variable_options
+                )
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.deactivate()
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.fix()
+            bt_init.initialize(model)
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_constraint.activate()
+            model.mscontactor.heterogeneous_reactions[0, e].distribution_coefficient.unfix()
+            results = solver.solve(model, tee=True)
+            if not check_optimal_termination(results):
+                from idaes.core.util.model_diagnostics import DiagnosticsToolbox
+                diag_tbx = DiagnosticsToolbox(model)
+                import pdb; pdb.set_trace()
 
-        # self.restore_model_state(model)
-        # self.fix_initialization_states(model)
-        import pdb; pdb.set_trace()
+        self.restore_model_state(model)
+        self.fix_initialization_states(model)
+        # from pyomo.contrib.solver.common.factory import SolverFactory
+        # solver_obj = SolverFactory("ipopt") # Not ipopt_v2 here
+        # import pdb; pdb.set_trace()
         init_model = solver.solve(model, tee=True)
         # import pdb; pdb.set_trace()
         # TransformationFactory("contrib.strip_var_bounds").revert(model)
