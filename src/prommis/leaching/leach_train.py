@@ -272,6 +272,7 @@ class LeachingTrainData(UnitModelBlockData):
 
     # Set default initializer
     default_initializer = LeachingTrainInitializer
+    default_scaler = LeachingTrainScaler
 
     CONFIG = UnitModelBlockData.CONFIG()
 

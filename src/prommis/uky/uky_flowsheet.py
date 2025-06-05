@@ -159,11 +159,11 @@ from idaes.core import (
     FlowsheetBlock,
     MaterialBalanceType,
     MomentumBalanceType,
-    UnitModelBlock,
+    UnitModelBlockData,
     UnitModelCostingBlock,
 )
 from idaes.core.initialization import BlockTriangularizationInitializer
-from idaes.core.scaling.scaling_base import ScalerBase
+from idaes.core.scaling import CustomScalerBase, ConstraintScalingScheme
 from idaes.core.solvers import get_solver
 from idaes.core.util.model_diagnostics import DiagnosticsToolbox
 from idaes.core.util.model_statistics import degrees_of_freedom
@@ -236,7 +236,8 @@ def main():
         )
 
     initialize_system(scaled_model)
-
+    scaling.propagate_solution(scaled_model, m)
+    
     return m, None
 
     solve_system(scaled_model)
@@ -763,23 +764,41 @@ def set_scaling(m):
         "min_expression_scaling_hint": 0,
     }
 
-    leach_scaler = LeachingTrainScaler(**config)
+    sb = CustomScalerBase(**config)
+
+    # import pdb; pdb.set_trace()
+    for blk in m.fs.block_data_objects(descend_into=True):
+        if blk.parent_block() is m.fs:
+            if isinstance(blk, UnitModelBlockData):
+                if hasattr(blk, "default_scaler") and blk.default_scaler is not None:
+                    print(f"Scaling {blk.name}")
+                    scaler = blk.default_scaler(**config)
+                    scaler.scale_model(blk)
+                else:
+                    print(f"No default scaler for unit model {blk.name}")
+            elif "_expanded" in blk.name:
+                print(f"Scaling {blk.name}")
+                # Expanded arc block
+                for con in blk.component_data_objects(Constraint):
+                    sb.scale_constraint_by_nominal_value(con, scheme=ConstraintScalingScheme.inverseMaximum)
+
+    # leach_scaler = LeachingTrainScaler(**config)
     
-    for unit in m.fs.block_data_objects(LeachingTrain, descend_into=False):
-        print(f"Scaling {unit.name}")
+    # for unit in m.fs.block_data_objects(LeachingTrain, descend_into=False):
+    #     print(f"Scaling {unit.name}")
         
 
-    sx_scaler = SolventExtractionScaler(**config)
+    # sx_scaler = SolventExtractionScaler(**config)
     
-    for unit in m.fs.block_data_objects(descend_into=True):
-        if isinstance(unit, SolventExtraction):
-            print(f"Scaling {unit.name}")
-            sx_scaler.scale_model(unit)
-        elif isinstance(unit, LeachingTrain):
-            print(f"Scaling {unit.name}")
-            leach_scaler.scale_model(unit)
+    # for unit in m.fs.block_data_objects(descend_into=True):
+    #     if isinstance(unit, SolventExtraction):
+    #         print(f"Scaling {unit.name}")
+    #         sx_scaler.scale_model(unit)
+    #     elif isinstance(unit, LeachingTrain):
+    #         print(f"Scaling {unit.name}")
+    #         leach_scaler.scale_model(unit)
 
-    sb = ScalerBase()
+
 
     for var in m.fs.component_data_objects(Var, descend_into=True):
         if "temperature" in var.name:
@@ -1105,7 +1124,7 @@ def initialize_system(m):
     Args:
         m: pyomo model
     """
-    seq = SequentialDecomposition()
+    seq = SequentialDecomposition(solve_tears=True)
     seq.options.tear_method = "Direct"
     seq.options.iterLim = 1
     seq.options.tear_set = [
@@ -2871,4 +2890,5 @@ def display_costing(m):
 
 
 if __name__ == "__main__":
+    __spec__ = None
     m, results = main()
