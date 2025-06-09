@@ -11,6 +11,7 @@ from idaes.models.unit_models.translator import TranslatorData
 from idaes.core.util.model_statistics import degrees_of_freedom
 from idaes.core.solvers import get_solver
 from idaes.core.util.exceptions import InitializationError
+from idaes.core.scaling import CustomScalerBase, ConstraintScalingScheme
 
 import idaes.logger as idaeslog
 
@@ -20,13 +21,62 @@ __author__ = "Arkoprabho Dasgupta"
 # Set up logger
 _log = idaeslog.getLogger(__name__)
 
+class TranslatorDataLeachPrecipScaler(CustomScalerBase):
+    """
+    Scaler for blocks with a single state (Feed, Product, StateJunction)
+    """
+    def variable_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        self.call_submodel_scaler_method(
+            submodel=model.properties_in,
+            submodel_scalers=submodel_scalers,
+            method="variable_scaling_routine",
+            overwrite=overwrite
+        )
+        self.call_submodel_scaler_method(
+            submodel=model.properties_out,
+            submodel_scalers=submodel_scalers,
+            method="variable_scaling_routine",
+            overwrite=overwrite
+        )
+
+    def constraint_scaling_routine(
+        self, model, overwrite: bool = False, submodel_scalers: dict = None
+    ):
+        self.call_submodel_scaler_method(
+            submodel=model.properties_in,
+            submodel_scalers=submodel_scalers,
+            method="constraint_scaling_routine",
+            overwrite=overwrite
+        )
+        self.call_submodel_scaler_method(
+            submodel=model.properties_out,
+            submodel_scalers=submodel_scalers,
+            method="constraint_scaling_routine",
+            overwrite=overwrite
+        )
+        for con in model.flow_vol_eqn.values():
+            self.scale_constraint_by_nominal_value(
+                con,
+                scheme=ConstraintScalingScheme.inverseMaximum,
+                overwrite=overwrite
+            )
+        for con in model.conc_mass_metals_eqn.values():
+            self.scale_constraint_by_nominal_value(
+                con,
+                scheme=ConstraintScalingScheme.inverseMaximum,
+                overwrite=overwrite
+            )
+        
 
 @declare_process_block_class("TranslatorLeachPrecip")
 class TranslatorDataLeachPrecip(TranslatorData):
     """
     Translator block representing the SX/old_leaching interface
     """
-
+    default_scaler = TranslatorDataLeachPrecipScaler
+    
     def build(self):
         """
         Begin building model.
@@ -35,14 +85,13 @@ class TranslatorDataLeachPrecip(TranslatorData):
         Returns:
             None
         """
-        # Call UnitModel.build to setup dynamics
         super().build()
 
         @self.Constraint(
             self.flowsheet().time,
             doc="Equality volumetric flow equation",
         )
-        def eq_flow_vol_rule(blk, t):
+        def flow_vol_eqn(blk, t):
             return blk.properties_out[t].flow_vol == blk.properties_in[t].flow_vol
 
         self.components = Set(
@@ -72,7 +121,7 @@ class TranslatorDataLeachPrecip(TranslatorData):
             self.components,
             doc="Equality equation for metal components",
         )
-        def eq_conc_mass_metals(blk, t, i):
+        def conc_mass_metals_eqn(blk, t, i):
             return (
                 blk.properties_out[t].conc_mass_comp[i]
                 == blk.properties_in[t].conc_mass_comp[i]

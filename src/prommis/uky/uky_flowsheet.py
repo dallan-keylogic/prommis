@@ -238,7 +238,7 @@ def main():
     initialize_system(scaled_model)
     scaling.propagate_solution(scaled_model, m)
     
-    return m, None
+    # return m, None
 
     solve_system(scaled_model)
 
