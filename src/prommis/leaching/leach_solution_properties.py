@@ -45,12 +45,7 @@ ree_list = ["Sc", "Y", "La", "Ce", "Pr", "Nd", "Sm", "Gd", "Dy"]
 # Leach solution property package scaler
 class LeachSolutionPropertiesScaler(CustomScalerBase):
     """
-    Scaler for saponification properties package.
-
-    Flow and concentration are scaled by default value (if no user input provided),
-    pressure is scaled assuming order of magnitude of 1e5 Pa, and temperature is
-    scaled using the average of the bounds. Constraints using the inverse maximum
-    scheme.
+    Scaler for leach solution property package.
     """
 
     CONFIG = CustomScalerBase.CONFIG

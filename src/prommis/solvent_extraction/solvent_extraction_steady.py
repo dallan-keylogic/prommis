@@ -151,6 +151,8 @@ if __name__ == "__main__":
     submodel_scalers[m.fs.solex.mscontactor.aqueous] = leach_scaler
 
     solex_scaler.scale_model(m.fs.solex, submodel_scalers=submodel_scalers)
+    leach_scaler.DEFAULT_SCALING_FACTORS["conc_mass_comp[Cl]"] = 1e8
+    solex_scaler.scale_model(m.fs.solex, submodel_scalers=submodel_scalers, overwrite=True)
     m_scaled = TransformationFactory("core.scale_model").create_using(m, rename=False)
 
     solver = get_solver(solver="ipopt_v2")
